@@ -1,0 +1,94 @@
+name: Build & Deploy (No Docker)
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'   # oder deine gewünschte Version
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Archive build output
+        run: tar -czf build.tar.gz build/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build.tar.gz
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: .
+
+      - name: Extract artifact
+        run: tar -xzf build.tar.gz
+
+      - name: Add SSH key for deploy
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-passphrase: ${{ secrets.SSH_PASSPHRASE }}
+
+      - name: Deploy via SSH/rsync
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          UUID: ${{ secrets.UUID }}
+          PORT: ${{ secrets.PORT }}
+        run: |
+          # Zielverzeichnis erstellen
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "mkdir -p /var/www/$UUID"
+
+          # Dateien kopieren
+          rsync -avz --delete build/ $SERVER_USER@$SERVER_HOST:/var/www/$UUID/
+
+          # Nginx Config vorbereiten (falls noch nicht vorhanden)
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
+            cat > /etc/nginx/sites-available/$UUID <<EOF
+server {
+    listen $PORT;
+    server_name $UUID.iman-cloud.net;
+
+    root /var/www/$UUID;
+    index index.html;
+
+    location / {
+        try_files \$uri /index.html;
+    }
+
+    access_log /var/log/nginx/$UUID.access.log;
+    error_log  /var/log/nginx/$UUID.error.log;
+}
+EOF
+            ln -s /etc/nginx/sites-available/$UUID /etc/nginx/sites-enabled/$UUID
+          fi"
+
+          # Nginx reload
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "sudo nginx -t && sudo systemctl reload nginx"
