@@ -83,22 +83,22 @@ jobs:
 
           # Nginx Config vorbereiten (falls noch nicht vorhanden)
           $SSH_CMD "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
-            cat > /etc/nginx/sites-available/$UUID <<EOF
-server {
-    listen ${PORT};
-    server_name ${UUID}.iman-cloud.net;
+            cat > /etc/nginx/sites-available/$UUID <<'NGINXEOF'
+          server {
+              listen ${PORT};
+              server_name ${UUID}.iman-cloud.net;
 
-    root /var/www/${UUID};
-    index index.html;
+              root /var/www/${UUID};
+              index index.html;
 
-    location / {
-        try_files \\\$uri /index.html;
-    }
+              location / {
+                  try_files \$uri /index.html;
+              }
 
-    access_log /var/log/nginx/${UUID}.access.log;
-    error_log  /var/log/nginx/${UUID}.error.log;
-}
-EOF
+              access_log /var/log/nginx/${UUID}.access.log;
+              error_log  /var/log/nginx/${UUID}.error.log;
+          }
+          NGINXEOF
             ln -s /etc/nginx/sites-available/$UUID /etc/nginx/sites-enabled/$UUID
           fi"
 
