@@ -71,19 +71,19 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           # SSH Proxy Command für Cloudflare Access
-          SSH_CMD="ssh -o StrictHostKeyChecking=no -o ProxyCommand='cloudflared access ssh --hostname ssh.iman-cloud.net --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET' $SERVER_USER@ssh.iman-cloud.net"
+          PROXY_CMD="cloudflared access ssh --hostname ssh.iman-cloud.net --id ${CF_ACCESS_CLIENT_ID} --secret ${CF_ACCESS_CLIENT_SECRET}"
           
           # Zielverzeichnis erstellen
-          $SSH_CMD "mkdir -p /var/www/$UUID"
+          ssh -o StrictHostKeyChecking=no -o ProxyCommand="${PROXY_CMD}" ${SERVER_USER}@ssh.iman-cloud.net "mkdir -p /var/www/${UUID}"
 
           # Dateien kopieren
           rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no -o ProxyCommand='cloudflared access ssh --hostname ssh.iman-cloud.net --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET'" \
-            build/ $SERVER_USER@ssh.iman-cloud.net:/var/www/$UUID/
+            -e "ssh -o StrictHostKeyChecking=no -o ProxyCommand=\"${PROXY_CMD}\"" \
+            build/ ${SERVER_USER}@ssh.iman-cloud.net:/var/www/${UUID}/
 
           # Nginx Config vorbereiten (falls noch nicht vorhanden)
-          $SSH_CMD "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
-            cat > /etc/nginx/sites-available/$UUID <<'NGINXEOF'
+          ssh -o StrictHostKeyChecking=no -o ProxyCommand="${PROXY_CMD}" ${SERVER_USER}@ssh.iman-cloud.net "if [ ! -f /etc/nginx/sites-available/${UUID} ]; then
+            cat > /etc/nginx/sites-available/${UUID} <<'NGINXEOF'
           server {
               listen ${PORT};
               server_name ${UUID}.iman-cloud.net;
@@ -99,8 +99,8 @@ jobs:
               error_log  /var/log/nginx/${UUID}.error.log;
           }
           NGINXEOF
-            ln -s /etc/nginx/sites-available/$UUID /etc/nginx/sites-enabled/$UUID
+            ln -s /etc/nginx/sites-available/${UUID} /etc/nginx/sites-enabled/${UUID}
           fi"
 
           # Nginx reload
-          $SSH_CMD "sudo nginx -t && sudo systemctl reload nginx"
+          ssh -o StrictHostKeyChecking=no -o ProxyCommand="${PROXY_CMD}" ${SERVER_USER}@ssh.iman-cloud.net "sudo nginx -t && sudo systemctl reload nginx"
