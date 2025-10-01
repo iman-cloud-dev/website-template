@@ -27,6 +27,14 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          if [ ! -d "build" ]; then
+            echo "Error: build directory not found"
+            exit 1
+          fi
+          ls -la build/
+
       - name: Archive build output
         run: tar -czf build.tar.gz build/
 
@@ -49,46 +57,50 @@ jobs:
       - name: Extract artifact
         run: tar -xzf build.tar.gz
 
-      - name: Add SSH key for deploy
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: |
-            ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh-passphrase: ${{ secrets.SSH_PASSPHRASE }}
+      - name: Install cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
 
       - name: Deploy via SSH/rsync
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          UUID: ${{ secrets.UUID }}
-          PORT: ${{ secrets.PORT }}
+          UUID: ${{ vars.UUID }}
+          PORT: ${{ vars.PORT }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
+          # SSH Proxy Command für Cloudflare Access
+          SSH_CMD="ssh -o StrictHostKeyChecking=no -o ProxyCommand='cloudflared access ssh --hostname ssh.iman-cloud.net --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET' $SERVER_USER@ssh.iman-cloud.net"
+          
           # Zielverzeichnis erstellen
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "mkdir -p /var/www/$UUID"
+          $SSH_CMD "mkdir -p /var/www/$UUID"
 
           # Dateien kopieren
-          rsync -avz --delete build/ $SERVER_USER@$SERVER_HOST:/var/www/$UUID/
+          rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no -o ProxyCommand='cloudflared access ssh --hostname ssh.iman-cloud.net --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET'" \
+            build/ $SERVER_USER@ssh.iman-cloud.net:/var/www/$UUID/
 
           # Nginx Config vorbereiten (falls noch nicht vorhanden)
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
+          $SSH_CMD "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
             cat > /etc/nginx/sites-available/$UUID <<EOF
 server {
-    listen $PORT;
-    server_name $UUID.iman-cloud.net;
+    listen ${PORT};
+    server_name ${UUID}.iman-cloud.net;
 
-    root /var/www/$UUID;
+    root /var/www/${UUID};
     index index.html;
 
     location / {
-        try_files \$uri /index.html;
+        try_files \\\$uri /index.html;
     }
 
-    access_log /var/log/nginx/$UUID.access.log;
-    error_log  /var/log/nginx/$UUID.error.log;
+    access_log /var/log/nginx/${UUID}.access.log;
+    error_log  /var/log/nginx/${UUID}.error.log;
 }
 EOF
             ln -s /etc/nginx/sites-available/$UUID /etc/nginx/sites-enabled/$UUID
           fi"
 
           # Nginx reload
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "sudo nginx -t && sudo systemctl reload nginx"
+          $SSH_CMD "sudo nginx -t && sudo systemctl reload nginx"
