@@ -95,23 +95,20 @@ jobs:
             -o ProxyCommand="cloudflared access ssh --hostname ssh.iman-cloud.net --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET" \
             $SERVER_USER@ssh.iman-cloud.net \
             "if [ ! -f /etc/nginx/sites-available/$UUID ]; then
-              sudo bash -c \"cat > /etc/nginx/sites-available/$UUID <<'NGINXEOF'
-server {
-    listen $PORT;
-    server_name $UUID.iman-cloud.net;
-
-    root /var/www/$UUID;
-    index index.html;
-
-    location / {
-        try_files \\\$uri /index.html;
-    }
-
-    access_log /var/log/nginx/$UUID.access.log;
-    error_log  /var/log/nginx/$UUID.error.log;
-}
-NGINXEOF
-\"
+              echo 'server {' | sudo tee /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    listen $PORT;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    server_name $UUID.iman-cloud.net;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    root /var/www/$UUID;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    index index.html;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    location / {' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '        try_files \$uri /index.html;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    }' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    access_log /var/log/nginx/$UUID.access.log;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '    error_log  /var/log/nginx/$UUID.error.log;' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
+              echo '}' | sudo tee -a /etc/nginx/sites-available/$UUID > /dev/null
               sudo ln -s /etc/nginx/sites-available/$UUID /etc/nginx/sites-enabled/$UUID
             fi"
 
